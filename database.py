@@ -1,4 +1,3 @@
-cat > database.py << 'EOF'
 import aiosqlite
 import os
 from typing import Optional, Tuple, List, Dict
@@ -6,13 +5,10 @@ from config import DATABASE_NAME
 
 
 class Database:
-    """Класс для работы с базой данных"""
-    
     def __init__(self, db_name: str = DATABASE_NAME):
         self.db_name = db_name
 
     async def create_tables(self):
-        """Создание таблиц"""
         db_dir = os.path.dirname(self.db_name)
         if db_dir and not os.path.exists(db_dir):
             os.makedirs(db_dir, exist_ok=True)
@@ -66,7 +62,6 @@ class Database:
 
     async def register_user(self, user_id: int, username: str = None, 
                            first_name: str = None, last_name: str = None):
-        """Регистрация пользователя"""
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute("""
                 INSERT INTO users (user_id, username, first_name, last_name)
@@ -80,7 +75,6 @@ class Database:
 
     async def save_message(self, sender_id: int, receiver_id: int, 
                           receiver_message_id: int, message_type: str) -> int:
-        """Сохранение сообщения"""
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("""
                 INSERT INTO messages (sender_id, receiver_id, receiver_message_id, message_type)
@@ -90,7 +84,6 @@ class Database:
             return cursor.lastrowid
 
     async def get_sender_id(self, receiver_message_id: int) -> Optional[int]:
-        """Получить ID отправителя"""
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("""
                 SELECT sender_id FROM messages 
@@ -100,7 +93,6 @@ class Database:
             return result[0] if result else None
 
     async def get_user_info(self, user_id: int) -> Optional[Tuple]:
-        """Получить информацию о пользователе"""
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("""
                 SELECT username, first_name, last_name 
@@ -109,7 +101,6 @@ class Database:
             return await cursor.fetchone()
 
     async def mark_as_revealed(self, receiver_message_id: int):
-        """Отметить как раскрытое"""
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute("""
                 UPDATE messages SET is_revealed = 1 
@@ -118,7 +109,6 @@ class Database:
             await db.commit()
 
     async def is_already_revealed(self, receiver_message_id: int) -> bool:
-        """Проверить, раскрыто ли уже"""
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("""
                 SELECT is_revealed FROM messages 
@@ -127,8 +117,25 @@ class Database:
             result = await cursor.fetchone()
             return bool(result[0]) if result else False
 
+    async def is_user_banned(self, user_id: int) -> bool:
+        async with aiosqlite.connect(self.db_name) as db:
+            cursor = await db.execute("SELECT is_banned FROM users WHERE user_id = ?", (user_id,))
+            result = await cursor.fetchone()
+            return bool(result[0]) if result else False
+
+    async def ban_user(self, user_id: int) -> bool:
+        async with aiosqlite.connect(self.db_name) as db:
+            await db.execute("UPDATE users SET is_banned = 1 WHERE user_id = ?", (user_id,))
+            await db.commit()
+            return True
+
+    async def unban_user(self, user_id: int) -> bool:
+        async with aiosqlite.connect(self.db_name) as db:
+            await db.execute("UPDATE users SET is_banned = 0 WHERE user_id = ?", (user_id,))
+            await db.commit()
+            return True
+
     async def get_total_stats(self) -> Dict:
-        """Статистика"""
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("SELECT COUNT(*) FROM users")
             total_users = (await cursor.fetchone())[0]
@@ -152,9 +159,8 @@ class Database:
                 "today_messages": today_messages,
                 "today_users": today_users
             }
-    
+
     async def get_top_users(self, limit: int = 10) -> List[Dict]:
-        """Топ пользователей"""
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("""
                 SELECT u.user_id, u.username, u.first_name, COUNT(m.id) as msg_count
@@ -168,9 +174,8 @@ class Database:
             
             results = await cursor.fetchall()
             return [{"user_id": r[0], "username": r[1], "first_name": r[2], "msg_count": r[3]} for r in results]
-    
+
     async def search_user(self, query: str) -> List[Dict]:
-        """Поиск пользователя"""
         async with aiosqlite.connect(self.db_name) as db:
             if query.isdigit():
                 cursor = await db.execute("""
@@ -191,46 +196,42 @@ class Database:
             results = await cursor.fetchall()
             return [{"user_id": r[0], "username": r[1], "first_name": r[2], 
                     "last_name": r[3], "registered_at": r[4], "is_banned": r[5]} for r in results]
-    
-    async def ban_user(self, user_id: int) -> bool:
-        """Забанить"""
+
+    async def get_user_messages(self, user_id: int, limit: int = 20) -> List[Dict]:
         async with aiosqlite.connect(self.db_name) as db:
-            await db.execute("UPDATE users SET is_banned = 1 WHERE user_id = ?", (user_id,))
-            await db.commit()
-            return True
-    
-    async def unban_user(self, user_id: int) -> bool:
-        """Разбанить"""
-        async with aiosqlite.connect(self.db_name) as db:
-            await db.execute("UPDATE users SET is_banned = 0 WHERE user_id = ?", (user_id,))
-            await db.commit()
-            return True
-    
-    async def is_user_banned(self, user_id: int) -> bool:
-        """Проверить бан"""
-        async with aiosqlite.connect(self.db_name) as db:
-            cursor = await db.execute("SELECT is_banned FROM users WHERE user_id = ?", (user_id,))
-            result = await cursor.fetchone()
-            return bool(result[0]) if result else False
-    
+            cursor = await db.execute("""
+                SELECT m.id, m.sender_id, m.receiver_id, m.message_type, m.sent_at, m.is_revealed,
+                       s.username as s_username, s.first_name as s_first,
+                       r.username as r_username, r.first_name as r_first
+                FROM messages m
+                LEFT JOIN users s ON m.sender_id = s.user_id
+                LEFT JOIN users r ON m.receiver_id = r.user_id
+                WHERE (m.sender_id = ? OR m.receiver_id = ?) AND m.is_deleted = 0
+                ORDER BY m.sent_at DESC
+                LIMIT ?
+            """, (user_id, user_id, limit))
+            
+            results = await cursor.fetchall()
+            return [{"id": r[0], "sender_id": r[1], "receiver_id": r[2], "message_type": r[3],
+                    "sent_at": r[4], "is_revealed": r[5], "sender_username": r[6], 
+                    "sender_first_name": r[7], "receiver_username": r[8], "receiver_first_name": r[9]} 
+                    for r in results]
+
     async def delete_message(self, message_id: int) -> bool:
-        """Удалить сообщение"""
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute("UPDATE messages SET is_deleted = 1 WHERE id = ?", (message_id,))
             await db.commit()
             return True
-    
+
     async def add_admin_log(self, admin_id: int, action: str, target_id: int = None, details: str = None):
-        """Лог админа"""
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute("""
                 INSERT INTO admin_logs (admin_id, action, target_id, details)
                 VALUES (?, ?, ?, ?)
             """, (admin_id, action, target_id, details))
             await db.commit()
-    
+
     async def get_admin_logs(self, limit: int = 50) -> List[Dict]:
-        """Получить логи"""
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("""
                 SELECT l.id, l.admin_id, l.action, l.target_id, l.details, l.performed_at,
@@ -245,11 +246,9 @@ class Database:
             return [{"id": r[0], "admin_id": r[1], "action": r[2], "target_id": r[3],
                     "details": r[4], "performed_at": r[5], "admin_username": r[6], 
                     "admin_first_name": r[7]} for r in results]
-    
+
     async def get_all_user_ids(self) -> List[int]:
-        """Все ID пользователей"""
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("SELECT user_id FROM users WHERE is_banned = 0")
             results = await cursor.fetchall()
             return [r[0] for r in results]
-EOF
