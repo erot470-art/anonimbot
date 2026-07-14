@@ -1,76 +1,45 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-
 def get_start_keyboard():
-    """Клавиатура главного меню"""
     builder = InlineKeyboardBuilder()
-    builder.button(text="🔗 Получить мою ссылку", callback_data="get_link")
-    builder.button(text="❓ Как это работает", callback_data="how_it_works")
-    builder.adjust(1)
+    builder.button(text="🔗 Моя ссылка", callback_data="my_link")
+    builder.button(text="📊 Профиль", callback_data="profile")
+    builder.button(text="👥 Рефералы", callback_data="referrals")
+    builder.button(text="💎 Премиум", callback_data="premium")
+    builder.button(text="📨 Мои сообщения", callback_data="my_messages")
+    builder.button(text="❓ Помощь", callback_data="help")
+    builder.adjust(2)
     return builder.as_markup()
 
-
-def get_reveal_keyboard(message_id: int):
-    """Клавиатура с кнопкой раскрытия личности"""
+def get_reveal_keyboard(msg_id):
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="👁 Узнать отправителя", 
-        callback_data=f"reveal_{message_id}"
-    )
+    builder.button(text="👁 Узнать отправителя", callback_data=f"reveal_{msg_id}")
+    builder.button(text="❌ Удалить", callback_data=f"delete_{msg_id}")
+    builder.button(text="⭐ В избранное", callback_data=f"fav_{msg_id}")
     return builder.as_markup()
-
 
 def get_back_keyboard():
-    """Клавиатура возврата в меню"""
     builder = InlineKeyboardBuilder()
-    builder.button(text="◀️ В главное меню", callback_data="back_to_menu")
+    builder.button(text="◀️ Назад", callback_data="back_to_menu")
     return builder.as_markup()
 
-
-# ===== АДМИН-КЛАВИАТУРЫ =====
-
-def get_admin_main_keyboard():
-    """Главное меню администратора"""
+def get_admin_keyboard():
     builder = InlineKeyboardBuilder()
     builder.button(text="📊 Статистика", callback_data="admin_stats")
-    builder.button(text="👥 Топ пользователей", callback_data="admin_top_users")
-    builder.button(text="🔍 Поиск пользователя", callback_data="admin_search")
-    builder.button(text="📋 Логи действий", callback_data="admin_logs")
+    builder.button(text="👥 Пользователи", callback_data="admin_users")
+    builder.button(text="🔍 Поиск", callback_data="admin_search")
     builder.button(text="📢 Рассылка", callback_data="admin_broadcast")
+    builder.button(text="🎫 Промокоды", callback_data="admin_codes")
+    builder.button(text="📋 Логи", callback_data="admin_logs")
     builder.button(text="❌ Закрыть", callback_data="admin_close")
     builder.adjust(2)
     return builder.as_markup()
 
-
-def get_admin_back_keyboard():
-    """Клавиатура возврата в админ-меню"""
+def get_profile_keyboard():
     builder = InlineKeyboardBuilder()
-    builder.button(text="◀️ Назад в админ-панель", callback_data="admin_back")
-    builder.button(text="❌ Закрыть", callback_data="admin_close")
-    builder.adjust(1)
-    return builder.as_markup()
-
-
-def get_user_actions_keyboard(user_id: int, is_banned: bool = False):
-    """Клавиатура действий с пользователем"""
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📨 Сообщения", callback_data=f"admin_user_msgs_{user_id}")
-    
-    if is_banned:
-        builder.button(text="✅ Разбанить", callback_data=f"admin_unban_{user_id}")
-    else:
-        builder.button(text="🚫 Забанить", callback_data=f"admin_ban_{user_id}")
-    
-    builder.button(text="◀️ Назад", callback_data="admin_back")
-    builder.adjust(2)
-    return builder.as_markup()
-
-
-def get_broadcast_keyboard():
-    """Клавиатура для рассылки"""
-    builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Подтвердить рассылку", callback_data="admin_confirm_broadcast")
-    builder.button(text="❌ Отменить", callback_data="admin_cancel_broadcast")
+    builder.button(text="💰 Пополнить", callback_data="deposit")
+    builder.button(text="💎 Купить премиум", callback_data="buy_premium")
+    builder.button(text="🎫 Активировать код", callback_data="activate_code")
+    builder.button(text="◀️ Назад", callback_data="back_to_menu")
     builder.adjust(1)
     return builder.as_markup()
