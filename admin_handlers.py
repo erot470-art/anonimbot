@@ -1,10 +1,9 @@
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database import Database
-from keyboards import *
+from keyboards import get_admin_keyboard, get_back_keyboard, get_start_keyboard, get_profile_keyboard
 from config import ADMIN_ID
 import random
 import string
