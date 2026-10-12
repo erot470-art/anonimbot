@@ -322,4 +322,177 @@ async def show_premium(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "buy_premium")
-async
+async def buy_premium(callback: CallbackQuery):
+    ok, msg = await db.buy_premium(callback.from_user.id)
+    await callback.answer(msg, show_alert=True)
+    if ok:
+        await db.add_log(ADMIN_ID, "buy_premium", callback.from_user.id)
+
+
+@router.callback_query(F.data == "inbox")
+async def show_inbox(callback: CallbackQuery):
+    msgs = await db.get_received_messages(callback.from_user.id, 15)
+    if not msgs:
+        text = "📨 Входящих нет"
+    else:
+        text = "📨 <b>Входящие:</b>\n\n"
+        for m in msgs:
+            status = "👁" if m[8] else "🔒"
+            fav = "⭐" if m[9] else ""
+            text += f"{status}{fav} {m[3]} от {m[11] or 'аноним'}\n"
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_back_keyboard())
+
+
+@router.callback_query(F.data == "outbox")
+async def show_outbox(callback: CallbackQuery):
+    msgs = await db.get_sent_messages(callback.from_user.id, 15)
+    if not msgs:
+        text = "📤 Исходящих нет"
+    else:
+        text = "📤 <b>Исходящие:</b>\n\n"
+        for m in msgs:
+            text += f"Кому: {m[11] or 'ID' + str(m[2])}\n"
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_back_keyboard())
+
+
+@router.callback_query(F.data == "favorites")
+async def show_favorites(callback: CallbackQuery):
+    msgs = await db.get_favorite_messages(callback.from_user.id, 15)
+    if not msgs:
+        text = "⭐ Избранных нет"
+    else:
+        text = "⭐ <b>Избранное:</b>\n\n"
+        for m in msgs:
+            text += f"От: {m[11] or 'аноним'}\n{(m[5] or '')[:50]}\n\n"
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_back_keyboard())
+
+
+@router.callback_query(F.data == "help")
+async def show_help(callback: CallbackQuery):
+    text = (
+        "❓ <b>Помощь</b>\n\n"
+        "📨 <b>Получить сообщения</b>\n"
+        "Нажми «Моя ссылка» → отправь друзьям ПЕРВУЮ ссылку\n\n"
+        "📝 <b>Отправить сообщение</b>\n"
+        "Перейди по ссылке друга → напиши сообщение\n\n"
+        "👥 <b>Рефералы</b>\n"
+        "Отправь ВТОРУЮ ссылку → получай монеты\n\n"
+        "👁 <b>Раскрытие отправителя</b>\n"
+        "Нажми кнопку под сообщением"
+    )
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_back_keyboard())
+
+
+# ===================== СООБЩЕНИЯ =====================
+@router.callback_query(F.data.startswith("reveal_"))
+async def reveal_sender(callback: CallbackQuery):
+    try:
+        receiver_message_id = int(callback.data.split("_")[1])
+        user_id = callback.from_user.id
+
+        logger.info(f"REVEAL: receiver_msg_id={receiver_message_id}, user={user_id}")
+
+        msg = await db.get_message_by_receiver_id(receiver_message_id)
+        if not msg:
+            logger.warning(f"Message not found: {receiver_message_id}")
+            await callback.answer("❌ Сообщение не найдено", show_alert=True)
+            return
+
+        # msg индексы: 0=id, 1=sender_id, 2=receiver_id, ... 8=is_revealed
+        db_id = msg[0]
+        sender_id = msg[1]
+        receiver_id = msg[2]
+        is_revealed = msg[8]
+
+        logger.info(f"MSG: db_id={db_id} sender={sender_id} receiver={receiver_id} revealed={is_revealed}")
+
+        if receiver_id != user_id:
+            await callback.answer("❌ Это не ваше сообщение", show_alert=True)
+            return
+
+        if is_revealed:
+            sender = await db.get_user(sender_id)
+            name = "неизвестно"
+            if sender:
+                name = f"@{sender[1]}" if sender[1] else (sender[2] or f"ID{sender[0]}")
+            await callback.answer(f"👁 Уже раскрыто: {name}", show_alert=True)
+            return
+
+        # Проверка платы (если REVEAL_COST > 0)
+        if REVEAL_COST > 0 and not await db.is_premium(user_id):
+            balance = await db.get_balance(user_id)
+            if balance < REVEAL_COST:
+                await callback.answer(
+                    f"❌ Нужно {REVEAL_COST} монет. У тебя: {balance}",
+                    show_alert=True
+                )
+                return
+            await db.add_balance(user_id, -REVEAL_COST, "Раскрытие отправителя")
+
+        await db.reveal_message(db_id)
+        sender = await db.get_user(sender_id)
+
+        if not sender:
+            await callback.answer("❌ Отправитель не найден", show_alert=True)
+            return
+
+        name = f"@{sender[1]}" if sender[1] else (sender[2] or f"ID{sender[0]}")
+        clickable = f'<a href="tg://user?id={sender[0]}">{name}</a>'
+
+        await callback.answer(f"👁 Отправитель: {name}", show_alert=True)
+
+        try:
+            await callback.message.reply(
+                f"👁 <b>Отправитель раскрыт:</b>\n"
+                f"👤 {clickable}\n"
+                f"🆔 <code>{sender[0]}</code>",
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.error(f"reply error: {e}")
+
+        await db.add_log(ADMIN_ID, "reveal", user_id, f"Sender {sender_id}")
+
+    except Exception as e:
+        logger.error(f"REVEAL ERROR: {e}", exc_info=True)
+        await callback.answer("❌ Ошибка", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("fav_"))
+async def toggle_fav(callback: CallbackQuery):
+    try:
+        receiver_message_id = int(callback.data.split("_")[1])
+        msg = await db.get_message_by_receiver_id(receiver_message_id)
+        if msg:
+            is_fav = await db.toggle_favorite(msg[0])
+            await callback.answer("⭐ Добавлено" if is_fav else "Убрано", show_alert=False)
+    except Exception as e:
+        logger.error(f"fav error: {e}")
+        await callback.answer("Ошибка", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("delete_"))
+async def delete_msg(callback: CallbackQuery):
+    try:
+        receiver_message_id = int(callback.data.split("_")[1])
+        msg = await db.get_message_by_receiver_id(receiver_message_id)
+        if msg:
+            await db.delete_message(msg[0])
+            await callback.message.delete()
+    except Exception as e:
+        logger.error(f"delete error: {e}")
+
+
+# ===================== ПРОМОКОД =====================
+@router.message(Command("code"))
+async def cmd_code(message: Message, state: FSMContext):
+    await message.answer("🎫 Введи промокод:")
+    await state.set_state(CodeStates.waiting_code)
+
+
+@router.message(CodeStates.waiting_code)
+async def process_code(message: Message, state: FSMContext):
+    code = message.text.strip().upper()
+    ok, msg = await db.use_premium_code(message.from_user.id, code)
+    await message.answer(msg, reply_markup=get_main_menu(message.from_user.id, message.from_user.id == ADMIN_ID))
+    await state.clear()
