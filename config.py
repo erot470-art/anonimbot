@@ -3,9 +3,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "8442222382"))
 DATABASE_NAME = "/tmp/bot.db"
-REVEAL_COST = 0          # 0 = раскрытие бесплатное для всех
+
+# ===== АДМИНЫ =====
+# Главный админ (может добавлять других админов)
+SUPER_ADMIN_ID = int(os.getenv("ADMIN_ID", "8442222382"))
+
+# Список ID админов (можно пополнять через админ-панель)
+ADMIN_IDS = [SUPER_ADMIN_ID]
+
+# ===== НАСТРОЙКИ =====
+REVEAL_COST = 0          # 0 = бесплатно
 REFERRAL_BONUS = 5
 PREMIUM_PRICE = 100
 MAX_MESSAGE_LENGTH = 500
