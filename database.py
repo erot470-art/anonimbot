@@ -16,6 +16,7 @@ class Database:
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute("PRAGMA foreign_keys = ON")
 
+            # Пользователи
             await db.execute("""CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
@@ -31,6 +32,7 @@ class Database:
                 total_received INTEGER DEFAULT 0,
                 total_sent INTEGER DEFAULT 0)""")
 
+            # Сообщения
             await db.execute("""CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sender_id INTEGER NOT NULL,
@@ -38,13 +40,13 @@ class Database:
                 message_type TEXT NOT NULL,
                 message_content TEXT,
                 receiver_message_id INTEGER,
-                is_anonymous INTEGER DEFAULT 1,
                 is_revealed INTEGER DEFAULT 0,
                 is_deleted INTEGER DEFAULT 0,
                 is_favorite INTEGER DEFAULT 0,
                 sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 revealed_at TIMESTAMP)""")
 
+            # Рефералы
             await db.execute("""CREATE TABLE IF NOT EXISTS referrals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 referrer_id INTEGER NOT NULL,
@@ -52,6 +54,7 @@ class Database:
                 bonus_paid INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
 
+            # Транзакции
             await db.execute("""CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -60,6 +63,7 @@ class Database:
                 description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
 
+            # Промокоды
             await db.execute("""CREATE TABLE IF NOT EXISTS premium_codes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 code TEXT UNIQUE NOT NULL,
@@ -69,6 +73,7 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 used_at TIMESTAMP)""")
 
+            # Логи админов
             await db.execute("""CREATE TABLE IF NOT EXISTS admin_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 admin_id INTEGER NOT NULL,
@@ -77,6 +82,13 @@ class Database:
                 details TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
 
+            # Дополнительные админы
+            await db.execute("""CREATE TABLE IF NOT EXISTS admins (
+                user_id INTEGER PRIMARY KEY,
+                added_by INTEGER,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+
+            # Индексы
             await db.execute("CREATE INDEX IF NOT EXISTS idx_msg_recv ON messages(receiver_id, sent_at)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_msg_send ON messages(sender_id, sent_at)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_msg_recv_id ON messages(receiver_message_id)")
@@ -84,7 +96,8 @@ class Database:
             await db.commit()
 
     # ===== ПОЛЬЗОВАТЕЛИ =====
-    async def register_user(self, user_id, username=None, first_name=None, last_name=None, referred_by=None):
+    async def register_user(self, user_id, username=None, first_name=None,
+                            last_name=None, referred_by=None):
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("SELECT user_id FROM users WHERE user_id=?", (user_id,))
             existing = await cursor.fetchone()
@@ -97,7 +110,7 @@ class Database:
                 return False
             else:
                 referral_code = f"REF{user_id}{os.urandom(2).hex()}"
-                await db.execute("""INSERT INTO users 
+                await db.execute("""INSERT INTO users
                     (user_id, username, first_name, last_name, referred_by, referral_code)
                     VALUES (?, ?, ?, ?, ?, ?)""",
                     (user_id, username, first_name, last_name, referred_by, referral_code))
@@ -372,3 +385,31 @@ class Database:
             cursor = await db.execute("""SELECT user_id FROM users WHERE is_banned=0
                 AND last_active > datetime('now','-30 days')""")
             return [r[0] for r in await cursor.fetchall()]
+
+    # ===== АДМИНЫ =====
+    async def add_admin(self, user_id, added_by) -> bool:
+        async with aiosqlite.connect(self.db_name) as db:
+            try:
+                await db.execute("INSERT INTO admins (user_id, added_by) VALUES (?, ?)",
+                    (user_id, added_by))
+                await db.commit()
+                return True
+            except:
+                return False
+
+    async def remove_admin(self, user_id) -> bool:
+        async with aiosqlite.connect(self.db_name) as db:
+            await db.execute("DELETE FROM admins WHERE user_id=?", (user_id,))
+            await db.commit()
+            return True
+
+    async def get_all_admins(self) -> List[int]:
+        async with aiosqlite.connect(self.db_name) as db:
+            cursor = await db.execute("SELECT user_id FROM admins")
+            results = await cursor.fetchall()
+            return [r[0] for r in results]
+
+    async def is_admin_in_db(self, user_id) -> bool:
+        async with aiosqlite.connect(self.db_name) as db:
+            cursor = await db.execute("SELECT user_id FROM admins WHERE user_id=?", (user_id,))
+            return bool(await cursor.fetchone())
